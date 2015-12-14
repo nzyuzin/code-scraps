@@ -55,16 +55,16 @@ let count_mines (g : grid) x y =
           match g.(i).(j) with
           | Mine -> 1
           | _ -> 0
-    else
-      0 in
+        else
+          0 in
       if dy = 1 then
         value
-        else
-          hloop (dy + 1) + value in
+      else
+        hloop (dy + 1) + value in
     if dx = 1 then
       hloop (-1)
-      else
-        vloop (dx + 1) + hloop (-1) in
+    else
+      vloop (dx + 1) + hloop (-1) in
   vloop (-1)
 
 let place_numbers (g : grid) : grid =
@@ -80,37 +80,36 @@ let print_grid (g : grid) (sl : (int * int) list) (fl : (int * int) list) endgam
   let width = Array.length g in
   let height = Array.length g.(0) in
   let print_row first_char second_char =
-      for j = 0 to height * 2 do
-        if j mod 2 = 0 then
-          print_char first_char
+    for j = 0 to height * 2 do
+      if j mod 2 = 0 then
+        print_char first_char
         else
           print_char (second_char (j/2))
-      done in
+    done in
   let extract_char i j =
     let list_contains l el =
       List.exists (fun x -> x = el) l in
-    if list_contains fl (i,j) then
-      'F'
-    else if (not endgame) && not (list_contains sl (i,j)) then
-      '?'
+    if list_contains fl (i,j) then 'F'
+    else if (not endgame) && not (list_contains sl (i,j)) then '?'
     else
-    match g.(i).(j) with
-    | Empty -> ' '
-    | Number x -> char_of_int (x + 48) (* ASCII conversion *)
-    | Mine -> 'X' in
+      match g.(i).(j) with
+      | Empty -> ' '
+      | Number x -> char_of_int (x + 48) (* ASCII conversion *)
+      | Mine -> 'X' in
   for i = 0 to width * 2 do
-    if i mod 2 = 0 then
-      print_row ' ' (fun x -> '-')
-    else
-      print_row '|' (extract_char (i/2));
+    if i mod 2 = 0 then print_row ' ' (fun _ -> '-')
+    else print_row '|' (extract_char (i/2));
     print_char '\n'
   done
 
 let new_minefield ((w, h) : int * int) (mines : int) : grid =
-  let built_grid = place_mines (new_grid w h) mines in
-  place_numbers (built_grid)
+  place_numbers (place_mines (new_grid w h) mines)
 
 let gameloop grid =
+  let rec remove l el = match l with
+  | [] -> []
+  | x :: xs when x = el -> remove xs el
+  | x :: xs -> x :: (remove xs el) in
   let rec inner sl fl =
     print_grid grid sl fl false;
     print_endline ";; Enter your move:";
@@ -124,13 +123,16 @@ let gameloop grid =
       raise (Boom "You lost.")
     end
     else
+      let pos = (x, y) in
       match op with
       | 's' ->
-          inner ((x, y) :: sl) fl
+          inner (pos :: sl) (remove fl pos)
       | 'f' ->
-          inner sl ((x, y) :: fl)
+          inner sl (pos :: fl)
+      | 'r' ->
+          inner sl (remove fl pos)
       | _ ->
-          print_endline "Unrecognized operation: only 's' (step) and 'f' (flag) are supported";
+          print_endline "Unrecognized operation: only 's' (step),  'f' (flag) and 'r' (remove flag) are supported";
           inner sl fl in
   inner [] []
 
