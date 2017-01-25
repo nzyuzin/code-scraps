@@ -29,12 +29,12 @@ let string_of_node (n : node) = "(" ^ (string_of_int (fst n))
 let string_of_edge (e : edge) = "(" ^ (string_of_int (fst e))
   ^ ", " ^ (string_of_int (snd e)) ^ ")"
 
-let string_of_list (to_str : 'a -> string) (l : 'a list): string =
+let string_of_set (to_str : 'a -> string) (l : 'a set): string =
   let rec inner = function
-    | [] -> "]"
-    | a :: [] -> (to_str a) ^ "]"
+    | [] -> "}"
+    | a :: [] -> (to_str a) ^ "}"
     | a :: rest -> ((to_str a) ^ ", ") ^ (inner rest) in
-  "[" ^ (inner l)
+  "{" ^ (inner l)
 
 let print_graph g =
   let cmp_n (f: node) (s: node) = (fst f) - (fst s) in
@@ -42,8 +42,8 @@ let print_graph g =
     let fdiff = (fst f) - (fst s) in
     if fdiff != 0 then fdiff
     else (snd f) - (snd s) in
-  let nds = string_of_list string_of_node (List.sort cmp_n (nodes g)) in
-  let edgs = string_of_list string_of_edge (List.sort cmp_e (edges g)) in
+  let nds = string_of_set string_of_node (List.sort cmp_n (nodes g)) in
+  let edgs = string_of_set string_of_edge (List.sort cmp_e (edges g)) in
   print_endline ("<" ^ nds ^ " : " ^ edgs ^ ">")
 
 let unwrap_optional = function
