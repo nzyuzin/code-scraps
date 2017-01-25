@@ -78,9 +78,7 @@ let new_node algnmt: node = begin
   nd
 end
 
-let make_edge fn sn: edge =
-  let f = fst fn in
-  let s = fst sn in
+let make_edge f s: edge =
   if f < s then
     (f, s)
   else
@@ -109,17 +107,21 @@ let neighbour e n =
   else
     None
 
-let add_node g n: unit =
+let add_node g n: graph ref =
   if contains_node !g n then
-    ()
-  else
-    g := make_graph (n :: (nodes !g)) (edges !g)
+    g
+  else begin
+    g := make_graph (n :: (nodes !g)) (edges !g);
+    g
+  end
 
-let add_edge g e: unit =
+let add_edge (g: graph ref) (e: edge): graph ref =
   if contains_edge !g e then
-    ()
-  else
-    g := make_graph (nodes !g) (e :: (edges !g))
+    g
+  else begin
+    g := make_graph (nodes !g) (e :: (edges !g));
+    g
+  end
 
 let neighbours (n: node) (g: graph) : node set =
   let rec inner = function
@@ -146,14 +148,12 @@ let simulate_turn (g: graph ref): graph ref =
     | [] -> new_g
     | n :: rest ->
       let neighbrs = neighbours n !g in
-      if (reps neighbrs) > (dems neighbrs) then begin
-        add_node new_g (change_alignment n Rep);
+      if (reps neighbrs) > (dems neighbrs) then
+        let _ = add_node new_g (change_alignment n Rep) in
         inner rest new_g
-      end
-      else begin
-        add_node new_g (change_alignment n Dem);
-        inner rest new_g
-      end in
+      else
+        let _ = add_node new_g (change_alignment n Dem) in
+        inner rest new_g in
   let new_graph = make_graph [] (edges !g) in
   inner (nodes !g) (ref new_graph)
 
@@ -189,17 +189,42 @@ let rec iterate_until_stable g break: int * graph =
       end in
     inner 2
 
+let read_graph () =
+  let parse_node str: node =
+    let fail () = raise (Failure ("Unexpected input instead of node: " ^ str)) in
+    let letter = String.sub str 0 1 in
+    if String.length str >= 1 then
+      if letter = "r" then new_node Rep
+      else if letter = "d" then new_node Dem
+      else fail ()
+    else fail () in
+  let parse_edge str: edge =
+    let splt = String.split_on_char ' ' str in
+    if List.length splt == 2 then
+      let f = int_of_string (List.hd splt) in
+      let s = int_of_string (List.nth splt 1) in
+      make_edge f s
+    else
+      raise (Failure ("Unexpected input instead of edge: " ^ str)) in
+  let rec inner (g: graph ref) nodes_read =
+    let line = read_line () in
+    if (String.length line) = 0 then
+      if nodes_read then
+        g
+      else
+        inner g true
+    else
+      if nodes_read then
+        let edg = parse_edge line in
+        inner (add_edge g edg) nodes_read
+      else
+        let nd = parse_node line in
+        inner (add_node g nd) nodes_read in
+  inner (ref (make_graph [] [])) false
+
 let _ =
   begin
-    let initial_graph = ref (make_graph [] []) in
-    let fst_node = new_node Dem in
-    let snd_node = new_node Rep in
-    let thrd_node = new_node Rep in
-    add_node initial_graph fst_node;
-    add_node initial_graph snd_node;
-    add_node initial_graph thrd_node;
-    add_edge initial_graph (make_edge fst_node snd_node);
-    add_edge initial_graph (make_edge fst_node thrd_node);
+    let initial_graph = read_graph () in
     let break = 1000 in
     let (time, final_graph) = iterate_until_stable initial_graph break in
     if time != -1 then begin
