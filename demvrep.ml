@@ -24,7 +24,7 @@ let string_of_alignment = function
   | Dem -> "Dem"
 
 let string_of_node (n : node) = "(" ^ (string_of_int (fst n))
-  ^ ", " ^ (string_of_alignment (snd n)) ^ ")"
+  ^ ", " ^ (string_of_alignment (node_alignment n)) ^ ")"
 
 let string_of_edge (e : edge) = "(" ^ (string_of_int (fst e))
   ^ ", " ^ (string_of_int (snd e)) ^ ")"
@@ -127,20 +127,20 @@ let neighbours (n: node) (g: graph) : node set =
   let rec inner = function
     | [] -> []
     | e :: rest -> begin
-      match neighbour e (fst n) with
+      match neighbour e (node_id n) with
       | Some other_node_id -> (unwrap_optional (lookup other_node_id g)) :: (inner rest)
       | None -> inner rest
     end in
   inner (edges g)
 
 let reps (nds: node set): int =
-  List.length (List.filter (fun x -> Rep = (snd x)) nds)
+  List.length (List.filter (fun x -> Rep = (node_alignment x)) nds)
 
 let dems (nds: node set): int =
-  List.length (List.filter (fun x -> Dem = (snd x)) nds)
+  List.length (List.filter (fun x -> Dem = (node_alignment x)) nds)
 
 let change_alignment (n: node) (algnmt: alignment): node =
-  make_node (fst n) algnmt
+  make_node (node_id n) algnmt
 
 let simulate_turn (g: graph ref): graph ref =
   let rec inner old_g_nodes (new_g : graph ref) =
