@@ -15,6 +15,10 @@ let nodes (g : graph): node set =
 let edges (g : graph): edge set =
   snd g
 
+let node_id (n: node): int = fst n
+
+let node_alignment (n: node): alignment = snd n
+
 let string_of_alignment = function
   | Rep -> "Rep"
   | Dem -> "Dem"
@@ -42,16 +46,23 @@ let print_graph g =
   let edgs = string_of_list string_of_edge (List.sort cmp_e (edges g)) in
   print_endline ("<" ^ nds ^ " : " ^ edgs ^ ">")
 
+let unwrap_optional = function
+  | Some x -> x
+  | None -> raise (Failure "unwrap optional failed!")
+
 let lookup id g =
   let rec inner = function
     | [] -> None
     | nd :: rest ->
-        if (fst nd) = id then Some nd
+        if (node_id nd) = id then Some nd
         else inner rest in
   inner (nodes g)
 
 let same_node f s: bool =
-  (fst f) = (fst s)
+  (node_id f) = (node_id s)
+
+let same_alignment (f: node) (s: node): bool =
+  (node_alignment f) = (node_alignment s)
 
 let same_edge f s: bool =
   (fst f) = (fst s) && (snd f) = (snd s)
@@ -111,9 +122,6 @@ let add_edge g e: unit =
     g := make_graph (nodes !g) (e :: (edges !g))
 
 let neighbours (n: node) (g: graph) : node set =
-  let unwrap_optional = function
-    | Some x -> x
-    | None -> raise (Failure "unwrap optional failed!") in
   let rec inner = function
     | [] -> []
     | e :: rest -> begin
@@ -132,12 +140,12 @@ let dems (nds: node set): int =
 let change_alignment (n: node) (algnmt: alignment): node =
   make_node (fst n) algnmt
 
-let simulate_turn (g: graph): graph =
+let simulate_turn (g: graph ref): graph ref =
   let rec inner old_g_nodes (new_g : graph ref) =
     match old_g_nodes with
     | [] -> new_g
     | n :: rest ->
-      let neighbrs = neighbours n g in
+      let neighbrs = neighbours n !g in
       if (reps neighbrs) > (dems neighbrs) then begin
         add_node new_g (change_alignment n Rep);
         inner rest new_g
@@ -146,8 +154,40 @@ let simulate_turn (g: graph): graph =
         add_node new_g (change_alignment n Dem);
         inner rest new_g
       end in
-  let new_graph = make_graph [] (edges g) in
-  !(inner (nodes g) (ref new_graph))
+  let new_graph = make_graph [] (edges !g) in
+  inner (nodes !g) (ref new_graph)
+
+let is_stable f s t =
+  let rec inner = function
+    | [] -> true
+    | fn :: rest ->
+      let sn = unwrap_optional (lookup (node_id fn) s) in
+      let tn = unwrap_optional (lookup (node_id fn) t) in
+      let node_stable = ((same_alignment fn sn) && (same_alignment fn tn))
+        || ((not (same_alignment fn sn)) && (same_alignment fn tn)) in
+      if node_stable then inner rest
+      else false in
+  inner (nodes f)
+
+let rec iterate_until_stable g break: int * graph =
+  let first_execution = g in
+  let second_execution = simulate_turn first_execution in
+  if is_stable !first_execution !first_execution !second_execution then
+    (1, !second_execution)
+  else
+    let third_execution = simulate_turn second_execution in
+    let rec inner iterations =
+      if is_stable !first_execution !second_execution !third_execution then
+        (iterations, !third_execution)
+      else if iterations >= break then
+        (-1, make_graph [] [])
+      else begin
+        first_execution := !second_execution;
+        second_execution := !third_execution;
+        third_execution := !(simulate_turn second_execution);
+        inner (iterations + 1)
+      end in
+    inner 2
 
 let _ =
   begin
@@ -160,8 +200,18 @@ let _ =
     add_node initial_graph thrd_node;
     add_edge initial_graph (make_edge fst_node snd_node);
     add_edge initial_graph (make_edge fst_node thrd_node);
-    print_graph !initial_graph;
-    print_graph (simulate_turn !initial_graph);
-    print_graph (simulate_turn (simulate_turn !initial_graph))
+    let break = 1000 in
+    let (time, final_graph) = iterate_until_stable initial_graph break in
+    if time != -1 then begin
+        print_string "Turns to stabilize: ";
+        print_int time;
+        print_endline "";
+        print_endline "Initial graph: ";
+        print_graph !initial_graph;
+        print_endline "Resulting graph: ";
+        print_graph final_graph
+      end
+    else
+      print_endline ("Couldn't stabilize in " ^ (string_of_int break) ^ " turns!")
   end
 
