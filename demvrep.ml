@@ -1,3 +1,6 @@
+let verbose = ref false
+let graphviz = ref false
+
 type alignment =
   | Rep
   | Dem
@@ -99,7 +102,7 @@ let contains_edge g e: bool =
     | a :: rest -> if same_edge e a then true else inner rest in
   inner (edges g)
 
-let neighbour e n =
+let neighbour (e: edge) (n: int) =
   if (fst e) = n then
     Some (snd e)
   else if (snd e) = n then
@@ -107,21 +110,13 @@ let neighbour e n =
   else
     None
 
-let add_node g n: graph ref =
-  if contains_node !g n then
-    g
-  else begin
-    g := make_graph (n :: (nodes !g)) (edges !g);
-    g
-  end
+let add_node g n: graph =
+  if contains_node g n then g
+  else make_graph (n :: (nodes g)) (edges g)
 
-let add_edge (g: graph ref) (e: edge): graph ref =
-  if contains_edge !g e then
-    g
-  else begin
-    g := make_graph (nodes !g) (e :: (edges !g));
-    g
-  end
+let add_edge (g: graph) (e: edge): graph =
+  if contains_edge g e then g
+  else make_graph (nodes g) (e :: (edges g))
 
 let neighbours (n: node) (g: graph) : node set =
   let rec inner = function
@@ -142,20 +137,25 @@ let dems (nds: node set): int =
 let change_alignment (n: node) (algnmt: alignment): node =
   make_node (node_id n) algnmt
 
-let simulate_turn (g: graph ref): graph ref =
-  let rec inner old_g_nodes (new_g : graph ref) =
+let simulate_turn (g: graph): graph =
+  let rec inner old_g_nodes (new_g: graph) =
     match old_g_nodes with
     | [] -> new_g
     | n :: rest ->
-      let neighbrs = neighbours n !g in
-      if (reps neighbrs) > (dems neighbrs) then
-        let _ = add_node new_g (change_alignment n Rep) in
-        inner rest new_g
+      let neighbrs = neighbours n g in
+      let self_algnmt = begin
+        match (node_alignment n) with
+        | Rep -> 1
+        | Dem -> -1
+      end in
+      if (reps neighbrs) + self_algnmt > (dems neighbrs) then
+        inner rest (add_node new_g (change_alignment n Rep))
+      else if (reps neighbrs) + self_algnmt < (dems neighbrs) then
+        inner rest (add_node new_g (change_alignment n Dem))
       else
-        let _ = add_node new_g (change_alignment n Dem) in
-        inner rest new_g in
-  let new_graph = make_graph [] (edges !g) in
-  inner (nodes !g) (ref new_graph)
+        inner rest (add_node new_g n) in
+  let new_graph = make_graph [] (edges g) in
+  inner (nodes g) new_graph
 
 let is_stable f s t =
   let rec inner = function
@@ -170,21 +170,25 @@ let is_stable f s t =
   inner (nodes f)
 
 let rec iterate_until_stable g break: int * graph =
-  let first_execution = g in
-  let second_execution = simulate_turn first_execution in
+  let first_execution = ref g in
+  let second_execution = ref (simulate_turn !first_execution) in
   if is_stable !first_execution !first_execution !second_execution then
     (1, !second_execution)
   else
-    let third_execution = simulate_turn second_execution in
+    let third_execution = ref (simulate_turn !second_execution) in
     let rec inner iterations =
       if is_stable !first_execution !second_execution !third_execution then
         (iterations, !third_execution)
       else if iterations >= break then
         (-1, make_graph [] [])
       else begin
+        if !verbose then begin
+          print_endline ("Intermediate graph on iteration " ^ (string_of_int iterations) ^ ":");
+          print_graph !second_execution
+        end;
         first_execution := !second_execution;
         second_execution := !third_execution;
-        third_execution := !(simulate_turn second_execution);
+        third_execution := (simulate_turn !second_execution);
         inner (iterations + 1)
       end in
   inner 2
@@ -206,7 +210,7 @@ let read_graph () =
       make_edge f s
     else
       raise (Failure ("Unexpected input instead of edge: " ^ str)) in
-  let rec inner (g: graph ref) nodes_read =
+  let rec inner (g: graph) nodes_read =
     let line = read_line () in
     if (String.length line) = 0 then
       if nodes_read then
@@ -220,12 +224,50 @@ let read_graph () =
       else
         let nd = parse_node line in
         inner (add_node g nd) nodes_read in
-  inner (ref (make_graph [] [])) false
+  inner (make_graph [] []) false
 
 let break = ref 1000
 
+let print_to_graphviz (g: graph) (name: string): unit =
+  let print_edges n =
+    let rec inner = function
+      | [] -> print_endline "}"
+      | nghbr :: rest -> begin
+          print_string ((string_of_int (node_id nghbr)) ^ " ");
+          inner rest
+        end in
+    inner (neighbours n g) in
+  let rec print_nodes = function
+    | [] -> ()
+    | n :: rest -> begin
+        print_string ((string_of_int (node_id n)) ^ " -> {");
+        print_edges n;
+        print_nodes rest
+      end in
+  let color = function
+    | Rep -> "red"
+    | Dem -> "blue" in
+  let rec print_colors = function
+    | [] -> ()
+    | n :: rest -> print_endline ((string_of_int (node_id n))
+          ^ " [color=" ^ (color (node_alignment n)) ^ ",style=filled];");
+        print_colors rest in
+  begin
+    print_endline ("digraph " ^ name ^ " {");
+    print_nodes (nodes g);
+    print_colors (nodes g);
+    print_endline "}"
+  end
+
+let print_only_final = ref false
+let print_only_initial = ref false
+
 let command_line_arguments = [
-  ("-b", Arg.Set_int(break), "<number> Turns until ceasing attempts to stabilize. Any value less than 2 is ignored.");
+  ("-b", Arg.Set_int(break), "<number> Turns until ceasing attempts to stabilize. Any value less than 2 is ignored. Default is 1000");
+  ("-v", Arg.Set(verbose), "Be verbose about simulation steps");
+  ("-g", Arg.Set(graphviz), "Print resulting output in graphviz understood format");
+  ("-f", Arg.Set(print_only_final), "Print only final graph");
+  ("-i", Arg.Set(print_only_initial), "Print only initial graph");
 ]
 
 let _ =
@@ -233,16 +275,27 @@ let _ =
     Arg.parse command_line_arguments (fun x -> ()) ("Usage: " ^ Sys.argv.(0) ^ " [-b]");
     let initial_graph = read_graph () in
     let (time, final_graph) = iterate_until_stable initial_graph !break in
-    if time != -1 then begin
-        print_string "Turns to stabilize: ";
-        print_int time;
-        print_endline "";
-        print_endline "Initial graph: ";
-        print_graph !initial_graph;
-        print_endline "Resulting graph: ";
-        print_graph final_graph
+    if time != -1 then
+      begin
+        if not (!print_only_initial || !print_only_final) then begin
+          print_string "Turns to stabilize: ";
+          print_int time;
+          print_endline "";
+          print_endline "Initial graph: ";
+        end;
+        if (not !print_only_final) then
+          if !graphviz then
+            print_to_graphviz initial_graph "INITIAL"
+          else
+            print_graph initial_graph;
+        if not (!print_only_initial || !print_only_final) then print_endline "Resulting graph: ";
+        if (not !print_only_initial) then
+          if !graphviz then
+            print_to_graphviz final_graph "FINAL"
+          else
+            print_graph final_graph;
       end
     else
-      print_endline ("Couldn't stabilize in " ^ (string_of_int !break) ^ " turns!")
+      prerr_endline ("Couldn't stabilize in " ^ (string_of_int !break) ^ " turns!")
   end
 

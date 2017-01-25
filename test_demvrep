@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+STORAGE_PREF=demvrep_tests
+INITIAL=$STORAGE_PREF/initial
+FINAL=$STORAGE_PREF/final
+
+ocaml demvrep.ml -g -i < $@ > $INITIAL.graph
+ocaml demvrep.ml -g -f < $@ > $FINAL.graph
+
+dot -Tpng $INITIAL.graph > $INITIAL.png
+dot -Tpng $FINAL.graph > $FINAL.png
