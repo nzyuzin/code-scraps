@@ -187,7 +187,7 @@ let rec iterate_until_stable g break: int * graph =
         third_execution := !(simulate_turn second_execution);
         inner (iterations + 1)
       end in
-    inner 2
+  inner 2
 
 let read_graph () =
   let parse_node str: node =
@@ -222,11 +222,17 @@ let read_graph () =
         inner (add_node g nd) nodes_read in
   inner (ref (make_graph [] [])) false
 
+let break = ref 1000
+
+let command_line_arguments = [
+  ("-b", Arg.Set_int(break), "<number> Turns until ceasing attempts to stabilize. Any value less than 2 is ignored.");
+]
+
 let _ =
   begin
+    Arg.parse command_line_arguments (fun x -> ()) ("Usage: " ^ Sys.argv.(0) ^ " [-b]");
     let initial_graph = read_graph () in
-    let break = 1000 in
-    let (time, final_graph) = iterate_until_stable initial_graph break in
+    let (time, final_graph) = iterate_until_stable initial_graph !break in
     if time != -1 then begin
         print_string "Turns to stabilize: ";
         print_int time;
@@ -237,6 +243,6 @@ let _ =
         print_graph final_graph
       end
     else
-      print_endline ("Couldn't stabilize in " ^ (string_of_int break) ^ " turns!")
+      print_endline ("Couldn't stabilize in " ^ (string_of_int !break) ^ " turns!")
   end
 
